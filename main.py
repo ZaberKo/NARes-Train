@@ -47,7 +47,7 @@ parser.add_argument('--attack_choice', default='PGD', choices=['PGD', 'AA', 'GAM
 parser.add_argument('--epsilon', default=8, type=float, help='perturbation')
 parser.add_argument('--num_steps', default=20, type=int, help='perturb number of steps')
 parser.add_argument('--step_size', default=0.8, type=float, help='perturb step size')
-parser.add_argument('--train_eval_epoch', default=0.5, type=float, help='PGD Eval in training after this epoch')
+parser.add_argument('--train_eval_epoch', default=0., type=float, help='PGD Eval in training after this epoch')
 
 # for distribute learning
 parser.add_argument('--apex-amp', action='store_true', default=False, help='Use NVIDIA Apex AMP mixed precision')
@@ -104,39 +104,29 @@ shutil.copyfile(config_file, os.path.join(exp_path, args.version + '.yaml'))
 if args.stop_epoch == None:
     args.stop_epoch = config.epochs
 
-if hasattr(config, 'ema'):
-    args.ema, args.tau, args.static_decay = config.ema, config.tau, config.static_decay
-    logger.info("   ### You are using EMA to improve the model ### ")
-else:
-    args.ema, args.tau, args.static_decay = False, 0, False
-logger.info(" ### Start to evaluate from {} Epoch ### ".format(config.epochs * args.train_eval_epoch))
 logger.info(" ### Start to evaluate from {} Epoch ### ".format(config.epochs * args.train_eval_epoch))
 logger.info(" ### Start to evaluate from {} Epoch ### ".format(config.epochs * args.train_eval_epoch))
 logger.info(args)
 logger.info(args.seed)
 
 
-def whitebox_eval(data_loader, model, evaluator, log=True):
+def whitebox_eval(data_loader, model, evaluator, attack_choice, num_steps, log=True):
     natural_count, pgd_count, total, stable_count = 0, 0, 0, 0
     loss_meters = util.AverageMeter()
     lip_meters = util.AverageMeter()
-    # Adding support for L2 attacker
+
     model.eval()
     for i, (images, labels) in enumerate(data_loader["test_dataset"]):
         images, labels = images.to(device), labels.to(device)
         # pgd attack
         images, labels = Variable(images, requires_grad=True), Variable(labels)
-        if args.attack_choice == 'PGD':
+        if attack_choice == 'PGD':
             rs = evaluator._pgd_whitebox(model, images, labels, random_start=True,
-                                         epsilon=args.epsilon, num_steps=args.num_steps,
+                                         epsilon=args.epsilon, num_steps=num_steps,
                                          step_size=args.step_size)
-        elif args.attack_choice == 'GAMA':
-            rs = evaluator._gama_whitebox(model, images, labels, epsilon=args.epsilon,
-                                          num_steps=args.num_steps, eps_iter=args.step_size)
-        elif args.attack_choice == 'CW':
-            print("    ###    Using PGD-CW ####    ")
+        elif attack_choice == 'PGD-CW':
             rs = evaluator._pgd_cw_whitebox(model, images, labels, random_start=True,
-                                        epsilon=args.epsilon, num_steps=args.num_steps,
+                                        epsilon=args.epsilon, num_steps=num_steps,
                                         step_size=args.step_size)
         else:
             raise ('Not implemented')
@@ -200,11 +190,7 @@ def adjust_learning_rate(optimizer, epoch):
 def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trainer, evaluator, ENV, data_loader,
           teacher_model=None):
     print(model)
-    # adding EMA
-    if args.ema:
-        model_ema = copy.deepcopy(model)
-    else:
-        model_ema = None
+
     for epoch in range(starting_epoch, config.epochs):
         logger.info("=" * 20 + "Training Epoch %d" % (epoch) + "=" * 20)
         adjust_learning_rate(optimizer, epoch)
@@ -216,13 +202,10 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
             logger.info('Drop Path Probability %.4f' % drop_path_prob)
 
         # Train
-        ENV['global_step'] = trainer.train(epoch, model, criterion, optimizer, teacher_model, model_ema=model_ema)
+        ENV['global_step'] = trainer.train(epoch, model, criterion, optimizer)
         # Eval
         logger.info("=" * 20 + "Eval Epoch %d" % (epoch) + "=" * 20)
-        if args.ema:      # using the EMA model to eval instead
-            evaluator.eval(epoch, model_ema)
-        else:
-            evaluator.eval(epoch, model)
+        evaluator.eval(epoch, model)
         payload = ('Eval Loss:%.4f\tEval acc: %.2f' % (evaluator.loss_meters.avg, evaluator.acc_meters.avg * 100))
         logger.info(payload)
         ENV['eval_history'].append(evaluator.acc_meters.avg * 100)
@@ -231,11 +214,14 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
         is_best = False
         if epoch >= config.epochs * args.train_eval_epoch and args.train_eval_epoch >= 0:
             # Reset Stats
+            # Adding the support for 2 attackers
+            # PGD-20
             trainer._reset_stats()
             evaluator._reset_stats()
             for param in model.parameters():
                 param.requires_grad = False
-            natural_acc, pgd_acc, stable_acc, lip = whitebox_eval(data_loader, model, evaluator, log=False)
+            natural_acc, pgd_acc, stable_acc, lip = whitebox_eval(data_loader, model, evaluator,
+                                                                  attack_choice='PGD', num_steps=20, log=False)
             for param in model.parameters():
                 param.requires_grad = True
             is_best = True if pgd_acc > ENV['best_pgd_acc'] else False
@@ -243,7 +229,22 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
             ENV['pgd_eval_history'].append((epoch, pgd_acc))
             ENV['stable_acc_history'].append(stable_acc)
             ENV['lip_history'].append(lip)
-            logger.info('Best PGD accuracy: %.2f' % (ENV['best_pgd_acc']))
+            logger.info('Best PGD-20 accuracy: %.2f' % (ENV['best_pgd_acc']))
+            # CW-40
+            trainer._reset_stats()
+            evaluator._reset_stats()
+            for param in model.parameters():
+                param.requires_grad = False
+            natural_acc, pgdcw_acc, stable_acc, lip = whitebox_eval(data_loader, model, evaluator,
+                                                                  attack_choice='PGD-CW', num_steps=40, log=False)
+            for param in model.parameters():
+                param.requires_grad = True
+            is_best = True if pgdcw_acc > ENV['best_pgdcw_acc'] else False
+            ENV['best_pgdcw_acc'] = max(ENV['best_pgdcw_acc'], pgd_acc)
+            ENV['pgdcw_eval_history'].append((epoch, pgd_acc))
+            ENV['cw_stable_acc_history'].append(stable_acc)
+            ENV['cw_lip_history'].append(lip)
+            logger.info('Best PGDCW-40 accuracy: %.2f' % (ENV['best_pgdcw_acc']))
         # Reset Stats
         trainer._reset_stats()
         evaluator._reset_stats()
@@ -261,19 +262,6 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
                         save_best=is_best,
                         filename=filename)
         logger.info('Model Saved at %s\n', filename)
-        if args.ema:        # update the Model_EMA at every epoch for resume training
-            filename = checkpoint_path_file + '_ema.pth'
-            target_model = model_ema.module if hasattr(model_ema, 'module') else model_ema
-            util.save_model(ENV=ENV,
-                            epoch=epoch,
-                            model=target_model,
-                            optimizer=None,
-                            alpha_optimizer=None,
-                            scheduler=None,
-                            genotype=genotype,
-                            save_best=is_best,
-                            filename=filename)
-            logger.info('Model-EMA with better performance Saved at %s\n', filename)
         if config.epochs == 400:
             save_epochs = [300, 325, 350, 370]
         else:
@@ -290,19 +278,6 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
                             save_best=False,
                             filename=filename)
             logger.info('Model Saved at %s\n', filename)
-            if args.ema:        # update the Model_EMA at every epoch for resume training
-                filename = checkpoint_path_file + '_{}_ema.pth'.format(epoch)
-                target_model = model_ema.module if hasattr(model_ema, 'module') else model_ema
-                util.save_model(ENV=ENV,
-                                epoch=epoch,
-                                model=target_model,
-                                optimizer=None,
-                                alpha_optimizer=None,
-                                scheduler=None,
-                                genotype=genotype,
-                                save_best=False,
-                                filename=filename)
-                logger.info('At epoch@{} Model-EMA Saved at {}\n'.format(epoch, filename))
 
         if (epoch + 1) == args.stop_epoch:  # setting this to controle the
             break   # finishing the training
@@ -398,8 +373,7 @@ def main():
     logger.info("Starting Epoch: %d" % (starting_epoch))
 
     if args.train:
-        train(starting_epoch, model, genotype, optimizer, None, criterion, trainer, evaluator, ENV, data_loader,
-              teacher_model)
+        train(starting_epoch, model, genotype, optimizer, None, criterion, trainer, evaluator, ENV, data_loader)
     elif args.attack_choice in ['PGD', 'GAMA', 'CW', "MI-FGSM", "TI-FGSM"]:
         for param in model.parameters():
             param.requires_grad = False

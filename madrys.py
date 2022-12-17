@@ -23,12 +23,12 @@ class MadrysLoss(nn.Module):
         self.perturb_steps = perturb_steps
         self.beta = beta
         self.distance = distance
-        self.cross_entropy = models.CutMixCrossEntropyLoss() if cutmix else torch.nn.CrossEntropyLoss()
+        self.cross_entropy = torch.nn.CrossEntropyLoss()
         self.adjust_freeze = adjust_freeze
         self.cutout = cutout
         self.cutout_length = cutout_length
 
-    def forward(self, model, x_natural, labels, optimizer, kd_ratio=0., teacher_model=None):
+    def forward(self, model, x_natural, labels, optimizer):
         model.eval()
         if self.adjust_freeze:
             for param in model.parameters():
@@ -73,28 +73,6 @@ class MadrysLoss(nn.Module):
         model.train()
         optimizer.zero_grad()
 
-        if isinstance(model, nn.DataParallel):
-            check_model = model.module
-        else:
-            check_model = model
-
-        if isinstance(check_model, models.DARTS_model.NetworkCIFAR) and check_model._auxiliary:
-            logits, aux_logits = model(x_adv)
-            loss = self.cross_entropy(logits, labels) + check_model.aux_weights * self.cross_entropy(aux_logits, labels)
-        # elif isinstance(check_model, models.basic_model.RobNetwork) and check_model._auxiliary:
-        #     logits, aux_logits = model(x_adv)
-        #     loss = self.cross_entropy(logits, labels) + check_model.aux_weights * self.cross_entropy(aux_logits, labels)
-        else:
-            logits = model(x_adv)
-            loss = self.cross_entropy(logits, labels)
-        # soft target
-        if kd_ratio > 0:
-            teacher_model.train()
-            with torch.no_grad():
-                soft_logits = teacher_model(x_adv).detach()
-                soft_label = F.softmax(soft_logits, dim=1)
-            kd_loss = cross_entropy_loss_with_soft_target(logits, soft_label) * kd_ratio
-            loss = loss + kd_loss
-            return logits, loss, kd_loss
-        else:
-            return logits, loss, 0
+        logits = model(x_adv)
+        loss = self.cross_entropy(logits, labels)
+        return logits, loss

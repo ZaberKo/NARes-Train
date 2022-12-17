@@ -42,12 +42,12 @@ class Trainer():
         self.acc_meters = util.AverageMeter()
         self.acc5_meters = util.AverageMeter()
 
-    def train(self, epoch, model, criterion, optimizer, teacher_model=None, model_ema=None):
+    def train(self, epoch, model, criterion, optimizer):
         model.train()
         for i, (images, labels) in enumerate(self.data_loader["train_dataset"]):
             images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True)
             start = time.time()
-            log_payload = self.train_batch(images, labels, model, optimizer, teacher_model=teacher_model)
+            log_payload = self.train_batch(images, labels, model, optimizer)
             end = time.time()
             time_used = end - start
             if self.global_step % self.log_frequency == 0:
@@ -57,30 +57,10 @@ class Trainer():
                                            **log_payload)
                 self.logger.info(display)
             self.global_step += 1
-            if self.args.ema:
-                """
-                Exponential model weight averaging update.
-                """
-                factor = int(self.global_step >= self.warmup_steps)
-                if not self.static_decay:
-                    delta = self.global_step - self.warmup_steps
-                    decay = min(self.decay_tau, (1. + delta) / (10. + delta)) if 10. + delta != 0 else self.decay_tau
-                else:
-                    decay = self.decay_tau
-                decay *= factor
-                ema_has_module = hasattr(model_ema, 'module')
-                needs_module = hasattr(model, 'module') and not ema_has_module
-                with torch.no_grad():
-                    msd = model.state_dict()
-                    for k, ema_v in model_ema.state_dict().items():
-                        if needs_module:
-                            k = 'module.' + k
-                        model_v = msd[k].detach()
-                        ema_v.copy_(ema_v * decay + (1. - decay) * model_v)
 
         return self.global_step
 
-    def train_batch(self, images, labels, model, optimizer, teacher_model=None):
+    def train_batch(self, images, labels, model, optimizer):
         model.zero_grad()
         optimizer.zero_grad()
         if self.amp_scaler:
@@ -90,13 +70,13 @@ class Trainer():
                     loss = self.criterion(logits, labels)
             else:
                 with self.amp_autocast():
-                    logits, loss, kd_loss = self.criterion(model, images, labels, optimizer, self.args.kd_ratio, teacher_model)
+                    logits, loss = self.criterion(model, images, labels, optimizer)
         else:
             if isinstance(self.criterion, torch.nn.CrossEntropyLoss):
                 logits = model(images)
                 loss = self.criterion(logits, labels)
             else:
-                logits, loss, kd_loss = self.criterion(model, images, labels, optimizer, self.args.kd_ratio, teacher_model)
+                logits, loss = self.criterion(model, images, labels, optimizer)
         # amp scale loss
         if self.amp_scaler:
             with amp.scale_loss(loss, optimizer) as scaled_loss:
@@ -123,7 +103,6 @@ class Trainer():
                    "acc_avg": self.acc_meters.avg,
                    "loss": loss,
                    "loss_avg": self.loss_meters.avg,
-                   "loss_kd": kd_loss if self.args.kd_ratio else 0,
                    "lr": optimizer.param_groups[0]['lr'],
                    "|gn|": grad_norm}
         return payload

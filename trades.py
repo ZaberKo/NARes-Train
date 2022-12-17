@@ -33,10 +33,10 @@ class TradesLoss(nn.Module):
         self.distance = distance
         self.ce = ce
         self.criterion_kl = nn.KLDivLoss(reduction='sum')
-        self.cross_entropy = models.CutMixCrossEntropyLoss() if cutmix else torch.nn.CrossEntropyLoss()
+        self.cross_entropy = torch.nn.CrossEntropyLoss()
         self.adjust_freeze = adjust_freeze
 
-    def forward(self, model, x_natural, y, optimizer, kd_ratio=0., teacher_model=None):
+    def forward(self, model, x_natural, y, optimizer):
         # define KL-loss
         criterion_kl = self.criterion_kl
         model.eval()
@@ -107,14 +107,5 @@ class TradesLoss(nn.Module):
         loss_robust = (1.0 / batch_size) * criterion_kl(F.log_softmax(adv_logits, dim=1),
                                                         F.softmax(logits, dim=1))
         loss = loss_natural + self.beta * loss_robust
-        # soft target
-        if kd_ratio > 0:
-            teacher_model.train()
-            with torch.no_grad():
-                soft_logits = teacher_model(x_adv).detach()
-                soft_label = F.softmax(soft_logits, dim=1)
-            kd_loss = cross_entropy_loss_with_soft_target(adv_logits, soft_label) * kd_ratio
-            loss = loss + kd_loss
-            return adv_logits, loss, kd_loss
-        else:
-            return adv_logits, loss, 0
+
+        return adv_logits, loss
