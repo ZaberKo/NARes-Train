@@ -34,8 +34,6 @@ class Trainer():
         self.acc5_meters = util.AverageMeter()
         self.global_step = global_step
         self.warmup_steps = args.warmup_steps
-        self.static_decay = args.static_decay
-        self.decay_tau = args.tau
 
     def _reset_stats(self):
         self.loss_meters = util.AverageMeter()

@@ -127,7 +127,7 @@ to minimize distribution shift relative to the original dataset.
 
 
 class CIFAR101_test(Dataset):
-    def __init__(self, data_path, version_string='v7'):
+    def __init__(self, data_path, version_string='v6'):
         filename = 'cifar10.1'
         if version_string == '':
             version_string = 'v7'

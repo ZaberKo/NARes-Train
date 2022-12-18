@@ -1,21 +1,21 @@
 import mlconfig
 import argparse
 import datetime
-import util
-import models
-import dataset
-import trades
-import madrys
+from torch.autograd import Variable
+from torchprofile import profile_macs
 import time
 import os
 import torch
 import shutil
 import copy
+
 import numpy as np
 from trainer import Trainer
 from evaluator import Evaluator
-from torch.autograd import Variable
-from torchprofile import profile_macs
+import util
+import models
+import dataset
+
 
 try:
     from apex import amp
@@ -27,33 +27,49 @@ except ImportError:
 
 from contextlib import suppress
 
+import trades
 mlconfig.register(trades.TradesLoss)
+import madrys
 mlconfig.register(madrys.MadrysLoss)
+import trades_moo
+mlconfig.register(trades_moo.MOTradesLoss)
 mlconfig.register(dataset.DatasetGenerator)
 
+# --train --data_parallel --apex-amp
 parser = argparse.ArgumentParser(description='RobustArc')
-parser.add_argument('--seed', type=int, default=0)
-parser.add_argument('--fix_seed', action='store_true', default=False)
-parser.add_argument('--version', type=str, default="DARTS_Search", help='which kind of ablation is')
-parser.add_argument("--stop_epoch", type=int, default=None)
-parser.add_argument("--warmup_steps", type=int, default=0)
 parser.add_argument('--exp_name', type=str, default="new_ablation/more_depths/")
 parser.add_argument('--config_path', type=str, default='configs')
+parser.add_argument('--version', type=str, help='which kind of ablation is')
+
+parser.add_argument('--seed', type=int, default=0)
+parser.add_argument('--fix_seed', action='store_true', default=False)
+
+parser.add_argument("--stop_epoch", type=int, default=None)
+parser.add_argument("--warmup_steps", type=int, default=0)
+parser.add_argument('--train_eval_epoch', default=0.5, type=float, help='PGD Eval in training after this epoch')
+parser.add_argument('--data_parallel', action='store_true', default=False)
+
 parser.add_argument('--load_model', action='store_true', default=False)
 parser.add_argument('--load_best_model', action='store_true', default=False)
-parser.add_argument('--data_parallel', action='store_true', default=False)
-parser.add_argument('--train', action='store_true', default=False)
-parser.add_argument('--attack_choice', default='PGD', choices=['PGD', 'AA', 'GAMA', 'CW', 'none', 'MI-FGSM', "TI-FGSM"])
+#
+parser.add_argument('--attack_choice', default=['PGD', 'PGD-CW'], choices=['PGD', 'CW'], type=list)
 parser.add_argument('--epsilon', default=8, type=float, help='perturbation')
 parser.add_argument('--num_steps', default=20, type=int, help='perturb number of steps')
 parser.add_argument('--step_size', default=0.8, type=float, help='perturb step size')
-parser.add_argument('--train_eval_epoch', default=0., type=float, help='PGD Eval in training after this epoch')
 
 # for distribute learning
 parser.add_argument('--apex-amp', action='store_true', default=False, help='Use NVIDIA Apex AMP mixed precision')
 parser.add_argument('--native-amp', action='store_true', default=False, help='Use Native Torch AMP mixed precision')
 
+
 args = parser.parse_args()
+# Setting the filepath
+args.exp_name = args.config_path.replace('configs', 'ablation_dir')
+# Pre-set some attributes for nasbench
+args.data_parallel = True
+args.apex_amp = True
+args.train_eval_epoch = 0.0
+
 if args.epsilon > 1:
     args.epsilon = args.epsilon / 255
     args.step_size = args.step_size / 255
@@ -68,11 +84,7 @@ checkpoint_path_file = os.path.join(checkpoint_path, args.version)
 util.build_dirs(exp_path)
 util.build_dirs(checkpoint_path)
 
-if not args.train:
-    logger = util.setup_logger(name=args.version,
-                               log_file=log_file_path + '_eval_at-{}-{}steps'.format(args.attack_choice, args.num_steps) + ".log")
-else:
-    logger = util.setup_logger(name=args.version, log_file=log_file_path + ".log")
+logger = util.setup_logger(name=args.version, log_file=log_file_path + ".log")
 
 import random
 if not args.fix_seed:
@@ -139,15 +151,12 @@ def whitebox_eval(data_loader, model, evaluator, attack_choice, num_steps, log=T
         local_lip = util.local_lip(model, images, X_pgd).item()
         lip_meters.update(local_lip)
         loss_meters.update(loss)
-        if log:
-            payload = 'LIP: %.4f\tStable Count: %d\tNatural Count: %d/%d\tNatural Acc: ' \
-                      '%.2f\tAdv Count: %d/%d\tAdv Acc: %.2f' % (
-                          local_lip, stable_count, natural_count, total, (natural_count / total) * 100,
-                          pgd_count, total, (pgd_count / total) * 100)
-            logger.info(payload)
 
     natural_acc = (natural_count / total) * 100
     pgd_acc = (pgd_count / total) * 100
+    # title
+    payload = '---- {} attacking results ----'.format(attack_choice)
+    logger.info(payload)
     payload = 'Natural Correct Count: %d/%d Acc: %.2f ' % (natural_count, total, natural_acc)
     logger.info(payload)
     payload = '%s Correct Count: %d/%d Acc: %.2f ' % (args.attack_choice, pgd_count, total, pgd_acc)
@@ -195,12 +204,6 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
         logger.info("=" * 20 + "Training Epoch %d" % (epoch) + "=" * 20)
         adjust_learning_rate(optimizer, epoch)
 
-        # Update Drop Path Prob
-        if isinstance(model, models.DARTS_model.NetworkCIFAR):
-            drop_path_prob = config.model.drop_path_prob * epoch / config.epochs
-            model.drop_path_prob = drop_path_prob
-            logger.info('Drop Path Probability %.4f' % drop_path_prob)
-
         # Train
         ENV['global_step'] = trainer.train(epoch, model, criterion, optimizer)
         # Eval
@@ -214,37 +217,38 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
         is_best = False
         if epoch >= config.epochs * args.train_eval_epoch and args.train_eval_epoch >= 0:
             # Reset Stats
-            # Adding the support for 2 attackers
-            # PGD-20
-            trainer._reset_stats()
-            evaluator._reset_stats()
-            for param in model.parameters():
-                param.requires_grad = False
-            natural_acc, pgd_acc, stable_acc, lip = whitebox_eval(data_loader, model, evaluator,
-                                                                  attack_choice='PGD', num_steps=20, log=False)
-            for param in model.parameters():
-                param.requires_grad = True
-            is_best = True if pgd_acc > ENV['best_pgd_acc'] else False
-            ENV['best_pgd_acc'] = max(ENV['best_pgd_acc'], pgd_acc)
-            ENV['pgd_eval_history'].append((epoch, pgd_acc))
-            ENV['stable_acc_history'].append(stable_acc)
-            ENV['lip_history'].append(lip)
-            logger.info('Best PGD-20 accuracy: %.2f' % (ENV['best_pgd_acc']))
-            # CW-40
-            trainer._reset_stats()
-            evaluator._reset_stats()
-            for param in model.parameters():
-                param.requires_grad = False
-            natural_acc, pgdcw_acc, stable_acc, lip = whitebox_eval(data_loader, model, evaluator,
-                                                                  attack_choice='PGD-CW', num_steps=40, log=False)
-            for param in model.parameters():
-                param.requires_grad = True
-            is_best = True if pgdcw_acc > ENV['best_pgdcw_acc'] else False
-            ENV['best_pgdcw_acc'] = max(ENV['best_pgdcw_acc'], pgd_acc)
-            ENV['pgdcw_eval_history'].append((epoch, pgd_acc))
-            ENV['cw_stable_acc_history'].append(stable_acc)
-            ENV['cw_lip_history'].append(lip)
-            logger.info('Best PGDCW-40 accuracy: %.2f' % (ENV['best_pgdcw_acc']))
+            if "PGD" in args.attack_choice:
+                # PGD-20
+                trainer._reset_stats()
+                evaluator._reset_stats()
+                for param in model.parameters():
+                    param.requires_grad = False
+                natural_acc, pgd_acc, stable_acc, lip = whitebox_eval(data_loader, model, evaluator,
+                                                                      attack_choice='PGD', num_steps=20, log=False)
+                for param in model.parameters():
+                    param.requires_grad = True
+                is_best = True if pgd_acc > ENV['best_pgd_acc'] else False
+                ENV['best_pgd_acc'] = max(ENV['best_pgd_acc'], pgd_acc)
+                ENV['pgd_eval_history'].append((epoch, pgd_acc))
+                ENV['stable_acc_history'].append(stable_acc)
+                ENV['lip_history'].append(lip)
+                logger.info('Best PGD-20 accuracy: %.2f' % (ENV['best_pgd_acc']))
+            elif "PGD-CW" in args.attack_choice:
+                # CW-40
+                trainer._reset_stats()
+                evaluator._reset_stats()
+                for param in model.parameters():
+                    param.requires_grad = False
+                natural_acc, pgdcw_acc, stable_acc, lip = whitebox_eval(data_loader, model, evaluator,
+                                                                      attack_choice='PGD-CW', num_steps=40, log=False)
+                for param in model.parameters():
+                    param.requires_grad = True
+                is_best = True if pgdcw_acc > ENV['best_pgdcw_acc'] else False
+                ENV['best_pgdcw_acc'] = max(ENV['best_pgdcw_acc'], pgd_acc)
+                ENV['pgdcw_eval_history'].append((epoch, pgd_acc))
+                ENV['cw_stable_acc_history'].append(stable_acc)
+                ENV['cw_lip_history'].append(lip)
+                logger.info('Best PGDCW-40 accuracy: %.2f' % (ENV['best_pgdcw_acc']))
         # Reset Stats
         trainer._reset_stats()
         evaluator._reset_stats()
@@ -372,29 +376,7 @@ def main():
 
     logger.info("Starting Epoch: %d" % (starting_epoch))
 
-    if args.train:
-        train(starting_epoch, model, genotype, optimizer, None, criterion, trainer, evaluator, ENV, data_loader)
-    elif args.attack_choice in ['PGD', 'GAMA', 'CW', "MI-FGSM", "TI-FGSM"]:
-        for param in model.parameters():
-            param.requires_grad = False
-        model.eval()
-        natural_acc, adv_acc, stable_acc, lip = whitebox_eval(data_loader, model, evaluator)
-        key = '%s_%d' % (args.attack_choice, args.num_steps)
-        ENV['natural_acc'] = natural_acc
-        ENV[key] = adv_acc
-        ENV['%s_stable' % key] = stable_acc
-        ENV['%s_lip' % key] = lip
-        target_model = model.module if args.data_parallel else model
-        filename = checkpoint_path_file + '_best.pth' if args.load_best_model else checkpoint_path_file + '.pth'
-        util.save_model(ENV=ENV,
-                        epoch=starting_epoch - 1,
-                        model=target_model,
-                        optimizer=optimizer,
-                        alpha_optimizer=None,
-                        scheduler=None,
-                        genotype=genotype,
-                        filename=filename)
-    return
+    train(starting_epoch, model, genotype, optimizer, None, criterion, trainer, evaluator, ENV, data_loader)
 
 
 if __name__ == '__main__':
