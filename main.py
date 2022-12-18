@@ -63,7 +63,7 @@ parser.add_argument('--native-amp', action='store_true', default=False, help='Us
 
 args = parser.parse_args()
 # Setting the filepath
-args.exp_name = args.config_path.replace('configs', 'ablation_dir')
+args.exp_name = "{}/{}".format(args.config_path.replace('configs', 'ablation_dir'), args.version)
 # Pre-set some attributes for nasbench
 args.data_parallel = True
 args.apex_amp = True
@@ -158,9 +158,9 @@ def whitebox_eval(data_loader, model, evaluator, attack_choice, num_steps, log=T
     logger.info(payload)
     payload = 'Natural Correct Count: %d/%d Acc: %.2f ' % (natural_count, total, natural_acc)
     logger.info(payload)
-    payload = '%s Correct Count: %d/%d Acc: %.2f ' % (args.attack_choice, pgd_count, total, pgd_acc)
+    payload = '%s Correct Count: %d/%d Acc: %.2f ' % (attack_choice, pgd_count, total, pgd_acc)
     logger.info(payload)
-    payload = '%s with %.1f steps Loss Avg: %.2f ' % (args.attack_choice, args.num_steps, loss_meters.avg)
+    payload = '%s with %.1f steps Loss Avg: %.2f ' % (attack_choice, num_steps, loss_meters.avg)
     logger.info(payload)
     payload = 'LIP Avg: %.4f ' % (lip_meters.avg)
     logger.info(payload)
