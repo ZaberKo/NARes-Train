@@ -3,7 +3,8 @@
 # cifar10@small configuration experiments
 CUDA_VISIBLE_DEVICES=0 nohup python main.py --config_path ./configs/nasbench/small --version arch_001  > train_logs/nasbench/nasbench-small@arch_001.log &
 CUDA_VISIBLE_DEVICES=1 nohup python main.py --config_path ./configs/nasbench/small --version arch_002  > train_logs/nasbench/nasbench-small@arch_002.log & 
-CUDA_VISIBLE_DEVICES=2 nohup python main.py --config_path ./configs/nasbench/small --version arch_003  > train_logs/nasbench/nasbench-small@arch_003.log & 
+
+CUDA_VISIBLE_DEVICES=2 nohup python main.py --config_path ./configs/nasbench/small --version arch_003  > train_logs/nasbench/nasbench-small@arch_003.log &
 CUDA_VISIBLE_DEVICES=3 nohup python main.py --config_path ./configs/nasbench/small --version arch_004  > train_logs/nasbench/nasbench-small@arch_004.log & 
 CUDA_VISIBLE_DEVICES=4 nohup python main.py --config_path ./configs/nasbench/small --version arch_005  > train_logs/nasbench/nasbench-small@arch_005.log & 
 CUDA_VISIBLE_DEVICES=5 nohup python main.py --config_path ./configs/nasbench/small --version arch_006  > train_logs/nasbench/nasbench-small@arch_006.log & 

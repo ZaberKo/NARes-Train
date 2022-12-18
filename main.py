@@ -31,8 +31,6 @@ import trades
 mlconfig.register(trades.TradesLoss)
 import madrys
 mlconfig.register(madrys.MadrysLoss)
-import trades_moo
-mlconfig.register(trades_moo.MOTradesLoss)
 mlconfig.register(dataset.DatasetGenerator)
 
 # --train --data_parallel --apex-amp
@@ -46,6 +44,7 @@ parser.add_argument('--fix_seed', action='store_true', default=False)
 
 parser.add_argument("--stop_epoch", type=int, default=None)
 parser.add_argument("--warmup_steps", type=int, default=0)
+parser.add_argument('--save_epochs', type=list, default=[74, 89])
 parser.add_argument('--train_eval_epoch', default=0.5, type=float, help='PGD Eval in training after this epoch')
 parser.add_argument('--data_parallel', action='store_true', default=False)
 
@@ -227,13 +226,10 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
                                                                       attack_choice='PGD', num_steps=20, log=False)
                 for param in model.parameters():
                     param.requires_grad = True
-                is_best = True if pgd_acc > ENV['best_pgd_acc'] else False
                 ENV['best_pgd_acc'] = max(ENV['best_pgd_acc'], pgd_acc)
                 ENV['pgd_eval_history'].append((epoch, pgd_acc))
-                ENV['stable_acc_history'].append(stable_acc)
-                ENV['lip_history'].append(lip)
                 logger.info('Best PGD-20 accuracy: %.2f' % (ENV['best_pgd_acc']))
-            elif "PGD-CW" in args.attack_choice:
+            if "PGD-CW" in args.attack_choice:
                 # CW-40
                 trainer._reset_stats()
                 evaluator._reset_stats()
@@ -244,10 +240,10 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
                 for param in model.parameters():
                     param.requires_grad = True
                 is_best = True if pgdcw_acc > ENV['best_pgdcw_acc'] else False
-                ENV['best_pgdcw_acc'] = max(ENV['best_pgdcw_acc'], pgd_acc)
-                ENV['pgdcw_eval_history'].append((epoch, pgd_acc))
-                ENV['cw_stable_acc_history'].append(stable_acc)
-                ENV['cw_lip_history'].append(lip)
+                ENV['best_pgdcw_acc'] = max(ENV['best_pgdcw_acc'], pgdcw_acc)
+                ENV['pgdcw_eval_history'].append((epoch, pgdcw_acc))
+                ENV['stable_acc_history'].append(stable_acc)
+                ENV['lip_history'].append(lip)
                 logger.info('Best PGDCW-40 accuracy: %.2f' % (ENV['best_pgdcw_acc']))
         # Reset Stats
         trainer._reset_stats()
@@ -266,11 +262,8 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
                         save_best=is_best,
                         filename=filename)
         logger.info('Model Saved at %s\n', filename)
-        if config.epochs == 400:
-            save_epochs = [300, 325, 350, 370]
-        else:
-            save_epochs = [int(config.epochs * 0.7)]
-        if epoch in save_epochs:
+
+        if epoch in args.save_epochs:
             filename = checkpoint_path_file + '_{}.pth'.format(epoch)
             util.save_model(ENV=ENV,
                             epoch=epoch,
@@ -346,10 +339,12 @@ def main():
            'best_acc': 0.0,
            'curren_acc': 0.0,
            'best_pgd_acc': 0.0,
+           'best_pgdcw_acc': 0.0,
            'flops': flops,
            'train_history': [],
            'eval_history': [],
            'pgd_eval_history': [],
+           'pgdcw_eval_history': [],
            'stable_acc_history': [],
            'lip_history': [],
            'genotype_list': []}

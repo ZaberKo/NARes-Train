@@ -2873,4 +2873,4 @@ CUDA_VISIBLE_DEVICES=0 nohup python main.py --config_path ./configs/nasbench/lar
 CUDA_VISIBLE_DEVICES=0 nohup python main.py --config_path ./configs/nasbench/large --version arch_15623  > train_logs/nasbench/nasbench-large@arch_15623.log & 
 ## gpu-319
 CUDA_VISIBLE_DEVICES=0 nohup python main.py --config_path ./configs/nasbench/large --version arch_15624  > train_logs/nasbench/nasbench-large@arch_15624.log & 
-CUDA_VISIBLE_DEVICES=0 nohup python main.py --config_path ./configs/nasbench/large --version arch_15625  > train_logs/nasbench/nasbench-large@arch_15625.log & 
+CUDA_VISIBLE_DEVICES=3 nohup python main.py --config_path ./configs/nasbench/large --version arch_15625  > train_logs/nasbench/nasbench-large@arch_15625.log &

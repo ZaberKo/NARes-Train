@@ -3,7 +3,7 @@ import glob
 
 
 exp_name = 'nasbench'
-component = 'small'
+component = 'medium'
 dataset = 'cifar10'  # cifar10, cifar100, tiny_imagenet
 
 base_dir = "../configs/nasbench/{}".format(component)
