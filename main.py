@@ -51,7 +51,7 @@ parser.add_argument('--data_parallel', action='store_true', default=False)
 parser.add_argument('--load_model', action='store_true', default=False)
 parser.add_argument('--load_best_model', action='store_true', default=False)
 #
-parser.add_argument('--attack_choice', default=['PGD', 'PGD-CW'], choices=['PGD', 'CW'], type=list)
+parser.add_argument('--attack_choice', default=['PGD', 'PGD-CW'], choices=['PGD', 'PGD-CW'], type=list)
 parser.add_argument('--epsilon', default=8, type=float, help='perturbation')
 parser.add_argument('--num_steps', default=20, type=int, help='perturb number of steps')
 parser.add_argument('--step_size', default=0.8, type=float, help='perturb step size')
