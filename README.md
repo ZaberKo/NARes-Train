@@ -2,54 +2,44 @@
 
 This repository contains the code for *NAS-Bench-R*, a framework for benchmarking robust architectures in adversarial robustness and OOD:
 
-**ModelDiff: A Framework for Comparing Learning Algorithms** <br>
-*Harshay Shah\*, Sung Min Park\*, Andrew Ilyas\*, Aleksander Madry* <br>
-**Paper**: https://arxiv.org/abs/2211.12491 <br>
-**Blog post**: http://gradientscience.org/modeldiff/
-
-```bibtex
-@inproceedings{shah2022modeldiff,
-  title={ModelDiff: A Framework for Comparing Learning Algorithms},
-  author = {Harshay Shah and Sung Min Park and Andrew Ilyas and Aleksander Madry},
-  booktitle = {ArXiv preprint arXiv:2211.12491},
-  year = {2022}
-}
-```
-
 ## Overview
-<p align='center'><img src="static/visual_summary.png"/></p>
 
-The figure above summarizes our algorithm comparisons framework, *ModelDiff*.
-- First, our method computes [datamodel representations](https://gradientscience.org/datamodels-1/) for each algorithm (part A) and then computes *residual datamodels* (part B) to identify directions (in training set space) that are specific to each algorithm.
-- Then, we run PCA on the residual datamodels (part C) to find a set of *distinguishing training directions*---weighted combinations of training examples that disparately impact predictions of models trained with different algorithms. Each distinguishing direction surfaces a distinguishing subpopulation, from which we infer a testable *distinguishing transformation* (part D) that significantly impacts predictions of models trained with one algorithm but not the other.
+This repo contains the implemantation of *NAS-Bench-R*. 
+Following just presents a brief introduction to this repo.
+- **Models** include the model definitions, currently there is only provide the support for ```PreActRobustNetwork```.
 
-In our [paper](https://arxiv.org/abs/2211.12491), we apply *ModelDiff* to three case studies that compare models trained with/without standard data augmentation, with/without ImageNet pre-training, and with different SGD hyperparameters. As shown below, in all three cases, our framework allows us to pinpoint concrete ways in which the two algorithms being compared differ:
+- **Configs** save the configs used to define a training, for example architecture structure, optimizer, and scheduler,  
+(if you have any confusion just take a look at ```configs/template_config.yaml```).
 
-<p align='center'>
-        <img src="static/case_studies.jpg"/>
-</p>
+- **Tools** provide some useful tools to process the files in batch. They are used to get parameters and flops of all subnets 
+(```get_subnets_params_flops.py```, the results will be saved at folder **results**), 
+generate all configs following flops in descending order (```generate_subnet_configs.py```, the generated configs will be saved in folder **Configs**), 
+and generate the training scripts in batch (```generate_training_scripts```, the scripts in folder **train_scripts**) 
+
+- **Main.py and trainer.py** provide the training pipeline; **eval_robustness.py and evaluator.py** provide the testing pipeline; 
+**trades.py and madrys.py** are two standard adversarial loss functions; **dataset.py** provide the support of CIFAR for adversarial training. 
+
+## Preparation
+1. **Dataset**: Prepare the those two dataset
+ [Official CIFAR10](https://www.cs.toronto.edu/~kriz/cifar.html) 
+ (Pytorch dataloader will download this automatically, just take it easy) 
+ and [CIFAR10.1](https://github.com/modestyachts/CIFAR-10.1), and and put them into ```datasets/cifar10```.
+
+2. Enviroment: This repo supports the NVIDIA Apex to accelerate the training process as well as save the GPU consumption. 
+Therefore, it would be better to install the Apex following [this](https://github.com/NVIDIA/apex), but without it is also fine.
+
 
 ## Getting started
 
-1. Clone the repo: `git clone git@github.com:MadryLab/modeldiff.git`
+1. Clone the repo: `git clone https://github.com/ShihuaHuang95/Robust_NASBench.git`
 
-2. Our code relies on the FFCV Library. To install this library along with other dependencies including PyTorch, follow the instructions below:
-    ```
-        conda create -n ffcv python=3.9 cupy pkg-config compilers libjpeg-turbo opencv pytorch torchvision cudatoolkit=11.3 numba -c pytorch -c conda-forge
-        conda activate ffcv
+2. Set up the training following the command:
+``` python main.py --config_path xx --version arch_id --seed xx --load_model (set this if you want to resume training)```
 
-        cd <REPO-DIR>
-        pip install -r requirements.txt
-    ```
+For example ```CUDA_VISIBLE_DEVICES=2 nohup python main.py --config_path ./configs/nasbench/medium --version arch_10000  > train_logs/nasbench/nasbench-medium@arch_10000.log &```, 
+the log will be saved at folder ```train_logs/nasbench/``` and the checkpoint will be saved at ```ablation_dir```
 
-3. Setup datasets. We use CIFAR-10 ([torchvision](https://pytorch.org/vision/stable/generated/torchvision.datasets.CIFAR10.html)), Waterbirds ([WILDS](https://github.com/p-lambda/wilds)), and Living17 ([BREEDS](https://github.com/MadryLab/BREEDS-Benchmarks)). Also, change the `DATA_DIR` path in `src/data/datasets.py` to the parent directory of ImageNet data.
 
-4. Our framework uses datamodel representations to identify distinguishing features. Download pre-computed datamodels for all three case studies from [here](https://www.dropbox.com/s/rco4qwte8nr3y0e/datamodels.zip?dl=0) and unzip them into  `datamodels/`
-
-That's it! Now you can run notebooks (one corresponding to each case study in `analysis/`), or take a look at our scripts (in `counterfactuals/`) that evaluate the average treatment effect of distinguishing feature transformations.
-
-## Maintainers
-
-* [Harshay Shah](https://twitter.com/harshays_)
-* [Sung Min Park](https://twitter.com/smsampark)
-* [Andrew Ilyas](https://twitter.com/andrew_ilyas)
+## ToDo list
+1. Native amp support and validation. 
+2. 

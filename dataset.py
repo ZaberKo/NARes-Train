@@ -45,10 +45,6 @@ class DatasetGenerator():
         elif dataset_type == 'CIFAR100':
             name = 'cifar100'
             self.num_of_classes = 100
-        self.data_path = '/zhichao/codes/data/{}'.format(name)  # A100
-        # self.data_path = '/raid/huangsh/datasets/{}'.format(name)  #for dgx2
-        self.data_path = '/zhichao/dataset/{}'.format(name)  # for AIStation
-        # self.data_path = '/research/hal-huangs88/datasets/{}'.format(name)  # for hal-server
         self.dataset_type = dataset_type
 
         if self.dataset_type not in available_datasets:

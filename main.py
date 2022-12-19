@@ -38,14 +38,12 @@ parser = argparse.ArgumentParser(description='RobustArc')
 parser.add_argument('--exp_name', type=str, default="new_ablation/more_depths/")
 parser.add_argument('--config_path', type=str, default='configs')
 parser.add_argument('--version', type=str, help='which kind of ablation is')
-
 parser.add_argument('--seed', type=int, default=0)
-parser.add_argument('--fix_seed', action='store_true', default=False)
 
 parser.add_argument("--stop_epoch", type=int, default=None)
 parser.add_argument("--warmup_steps", type=int, default=0)
 parser.add_argument('--save_epochs', type=list, default=[74, 89])
-parser.add_argument('--train_eval_epoch', default=0.5, type=float, help='PGD Eval in training after this epoch')
+parser.add_argument('--train_eval_epoch', default=0.0, type=float, help='PGD Eval in training after this epoch')
 parser.add_argument('--data_parallel', action='store_true', default=False)
 
 parser.add_argument('--load_model', action='store_true', default=False)
@@ -67,7 +65,6 @@ args.exp_name = "{}/{}".format(args.config_path.replace('configs', 'ablation_dir
 # Pre-set some attributes for nasbench
 args.data_parallel = True
 args.apex_amp = True
-args.train_eval_epoch = 0.0
 
 if args.epsilon > 1:
     args.epsilon = args.epsilon / 255
@@ -85,9 +82,6 @@ util.build_dirs(checkpoint_path)
 
 logger = util.setup_logger(name=args.version, log_file=log_file_path + ".log")
 
-import random
-if not args.fix_seed:
-    args.seed = random.randint(0, 1000)
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
 
@@ -111,6 +105,7 @@ else:
 
 config_file = os.path.join(args.config_path, args.version) + '.yaml'
 config = mlconfig.load(config_file)
+
 shutil.copyfile(config_file, os.path.join(exp_path, args.version + '.yaml'))
 if args.stop_epoch == None:
     args.stop_epoch = config.epochs
@@ -251,7 +246,7 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
 
         # Save Model, re-shape the procedure for saving model
         target_model = model.module if args.data_parallel else model
-        filename = checkpoint_path_file + '.pth'
+        filename = checkpoint_path_file + '_last.pth'
         util.save_model(ENV=ENV,
                         epoch=epoch,
                         model=target_model,
@@ -264,7 +259,7 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
         logger.info('Model Saved at %s\n', filename)
 
         if epoch in args.save_epochs:
-            filename = checkpoint_path_file + '_{}.pth'.format(epoch)
+            filename = checkpoint_path_file + '_{}e.pth'.format(epoch)
             util.save_model(ENV=ENV,
                             epoch=epoch,
                             model=target_model,
@@ -350,7 +345,7 @@ def main():
            'genotype_list': []}
 
     if args.load_model or args.load_best_model:
-        filename = checkpoint_path_file + '_best.pth' if args.load_best_model else checkpoint_path_file + '.pth'
+        filename = checkpoint_path_file + '_best.pth' if args.load_best_model else checkpoint_path_file + '_last.pth'
         checkpoint = util.load_model(filename=filename,
                                      model=model,
                                      optimizer=optimizer,

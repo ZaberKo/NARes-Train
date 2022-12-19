@@ -109,10 +109,10 @@ def save_model(filename, epoch, model, optimizer, alpha_optimizer, scheduler, sa
         state[key] = value
     torch.save(state, filename)
     if save_best:
-        pre, ext = os.path.splitext(filename)
-        pre += '_best'
-        filename = pre + ext
-        torch.save(state, filename)
+        # pre, ext = os.path.splitext(filename)
+        # pre += '_best'
+        # filename = pre + ext
+        torch.save(state, filename.replace('last', 'best'))
     return
 
 

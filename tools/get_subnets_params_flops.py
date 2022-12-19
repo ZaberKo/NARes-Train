@@ -3,6 +3,7 @@ from torchprofile import profile_macs
 from models.PreActRobustmodel import PreActRobustNetwork
 import json
 import pandas as pd
+import models
 
 
 if __name__ == '__main__':
@@ -55,10 +56,10 @@ if __name__ == '__main__':
                       width_mul[0], width_mul[1], width_mul[2], param_count, flops]
             all_subnets.append(subnet)
             index += 1
-        #     if index > 10:
-        #         break
-        # if index > 10:
-        #     break
+            if index > 10:
+                break
+        if index > 10:
+            break
     path = './results/NASBench_Design_Space_{}Subnets.csv'.format(index)
     df = pd.DataFrame(data=all_subnets)
     df.to_csv(path, header=headers, index=False, mode='w')
