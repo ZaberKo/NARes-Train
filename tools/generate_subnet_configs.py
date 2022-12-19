@@ -23,9 +23,10 @@ indexs = np.argsort(flops)      # Sorting the subnets follwoing flops in ascend
 params_selected, flops_selected, depths_selected, widths_selected = params[indexs], flops[indexs], depths[indexs], \
                                                                     widths[indexs]
 
-
 template_config = mlconfig.load("../configs/template_config.yaml")
 config = copy.deepcopy(template_config)
+# make sure the other things: Loss, activation, block
+
 
 for i in range(len(flops_selected)):
     if i < 4:
