@@ -33,12 +33,13 @@ import madrys
 mlconfig.register(madrys.MadrysLoss)
 mlconfig.register(dataset.DatasetGenerator)
 
-# --train --data_parallel --apex-amp
 parser = argparse.ArgumentParser(description='RobustArc')
 parser.add_argument('--exp_name', type=str, default="new_ablation/more_depths/")
 parser.add_argument('--config_path', type=str, default='configs')
 parser.add_argument('--version', type=str, help='which kind of ablation is')
 parser.add_argument('--seed', type=int, default=0)
+parser.add_argument('--data_path', type=str, default='./datasets')
+parser.add_argument('--run', type=str, default='r1')
 
 parser.add_argument("--stop_epoch", type=int, default=None)
 parser.add_argument("--warmup_steps", type=int, default=0)
@@ -61,10 +62,11 @@ parser.add_argument('--native-amp', action='store_true', default=False, help='Us
 
 args = parser.parse_args()
 # Setting the filepath
-args.exp_name = "{}/{}".format(args.config_path.replace('configs', 'ablation_dir'), args.version)
+exp_name = "{}/{}".format(args.config_path.replace('configs', 'ablation_dir'), args.run)
+args.exp_name = "{}/{}".format(exp_name, args.version)
 # Pre-set some attributes for nasbench
-args.data_parallel = True
-args.apex_amp = True
+# args.apex_amp = True
+args.native_amp = True
 
 if args.epsilon > 1:
     args.epsilon = args.epsilon / 255
@@ -92,6 +94,7 @@ if args.apex_amp and has_apex:
 elif args.native_amp or (not has_apex):
     use_amp = 'native'
 elif args.apex_amp or args.native_amp:
+    use_amp = None
     print("Neither APEX or native Torch AMP is available, using float32. Install NVIDA apex or upgrade to PyTorch 1.6")
 
 if torch.cuda.is_available():
@@ -106,7 +109,12 @@ else:
 config_file = os.path.join(args.config_path, args.version) + '.yaml'
 config = mlconfig.load(config_file)
 
-shutil.copyfile(config_file, os.path.join(exp_path, args.version + '.yaml'))
+# Modify the configs by writting more information into
+config["seed"] = "{}".format(args.seed)
+config["dataset"]["data_path"] = "{}".format(args.data_path)
+config.save(os.path.join(exp_path, args.version + '.yaml'), default_flow_style=False, sort_keys=False, allow_unicode=False)
+
+# shutil.copyfile(config_file, os.path.join(exp_path, args.version + '.yaml'))
 if args.stop_epoch == None:
     args.stop_epoch = config.epochs
 
@@ -305,11 +313,13 @@ def main():
     if use_amp == 'apex':
         model, optimizer = amp.initialize(model, optimizer, opt_level='O1')
         amp_autocast = suppress
-    else:
+    elif use_amp == 'native':
         amp_autocast = torch.cuda.amp.autocast
+    else:
+        amp_autocast = suppress
+
     criterion = config.criterion()
-    trainer = Trainer(criterion, data_loader, logger, config, amp_scaler=args.apex_amp, amp_autocast=amp_autocast,
-                      args=args)
+    trainer = Trainer(criterion, data_loader, logger, config, use_amp=use_amp, amp_autocast=amp_autocast, args=args)
 
     evaluator = Evaluator(data_loader, logger, config)
     if hasattr(config.dataset, "input_size"):

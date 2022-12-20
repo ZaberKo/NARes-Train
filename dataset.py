@@ -46,6 +46,7 @@ class DatasetGenerator():
             name = 'cifar100'
             self.num_of_classes = 100
         self.dataset_type = dataset_type
+        self.data_path = "{}/{}".format(data_path, name)
 
         if self.dataset_type not in available_datasets:
             raise('Dataset type %s not implemented' % self.dataset_type)

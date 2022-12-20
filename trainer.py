@@ -20,11 +20,12 @@ except ImportError:
 
 
 class Trainer():
-    def __init__(self, criterion, data_loader, logger, config, amp_scaler=False, amp_autocast=torch.cuda.amp.autocast, global_step=0, args=None):
+    def __init__(self, criterion, data_loader, logger, config, use_amp=None, amp_autocast=torch.cuda.amp.autocast, global_step=0, args=None):
         self.criterion = criterion
         self.args = args
         self.data_loader = data_loader
-        self.amp_scaler = amp_scaler
+        self.use_amp = use_amp
+        self.amp_scaler = torch.cuda.amp.GradScaler()
         self.amp_autocast = amp_autocast
         self.logger = logger
         self.config = config
@@ -61,7 +62,7 @@ class Trainer():
     def train_batch(self, images, labels, model, optimizer):
         model.zero_grad()
         optimizer.zero_grad()
-        if self.amp_scaler:
+        if self.use_amp == 'apex' or self.use_amp == 'native':
             if isinstance(self.criterion, torch.nn.CrossEntropyLoss):
                 with self.amp_autocast():
                     logits = model(images)
@@ -69,16 +70,18 @@ class Trainer():
             else:
                 with self.amp_autocast():
                     logits, loss = self.criterion(model, images, labels, optimizer)
-        else:
+        else:   # Conventional  
             if isinstance(self.criterion, torch.nn.CrossEntropyLoss):
                 logits = model(images)
                 loss = self.criterion(logits, labels)
             else:
                 logits, loss = self.criterion(model, images, labels, optimizer)
         # amp scale loss
-        if self.amp_scaler:
+        if self.use_amp == 'apex':  # Apex amp
             with amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
+        elif self.use_amp == 'native':  # Pytorch amp
+            self.amp_scaler.scale(loss).backward()
         else:
             loss.backward()
         if self.config.grad_clip != -1:
@@ -89,7 +92,14 @@ class Trainer():
                 param_norm = p.grad.data.norm(2)
                 grad_norm += param_norm.item() ** 2
             grad_norm = grad_norm ** (1. / 2)
+        # if self.use_amp == 'native':
+        #     print("   ### Scaler update ###   ")
+        #     # self.amp_scaler.step(optimizer)
+        #     optimizer.step()
+        #     self.amp_scaler.update()
+        # else:
         optimizer.step()
+
         if len(labels.shape) > 1:
             labels = labels.argmax(dim=1)
         acc, acc5 = util.accuracy(logits, labels, topk=(1, 5))
