@@ -41,6 +41,6 @@ Therefore, it would be better to install the Apex following [this](https://githu
 ``代表着arch_001的模型训练，seed@0，run@r1.
 
 
-## ToDo list
-1. 
-2. 
+## To-Do list
+1. 确保pytorch自带的native amp运行没问题：(1) 实现没问题；(2) 跟没用amp和使用NVIDIA Apex对比精度差别不大。
+2. 总共有超过1.5w条指令。设置排队机制，让每条独立训练的指令自动启动在某个GPU节点空闲的情况下。
