@@ -4,22 +4,18 @@ import datetime
 import util
 import models
 import dataset
-import trades
-import madrys
 import time
 import os
 import torch
 import shutil
 import numpy as np
-from trainer import Trainer
 from evaluator import Evaluator
 from torch.autograd import Variable
 from torchprofile import profile_macs
 
-mlconfig.register(trades.TradesLoss)
-mlconfig.register(madrys.MadrysLoss)
 mlconfig.register(dataset.DatasetGenerator)
 
+# python ./eval_robustness.py --config_path /research/hal-huangs88/codes/Robust_NASBench/ablation_dir/nasbench/small/r1 --attack_choice PGD --load_best_model  --version arch_001
 parser = argparse.ArgumentParser(description='RobustArc')
 parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--version', type=str, default="DARTS_Search")
@@ -43,6 +39,8 @@ checkpoint_path = "{}/checkpoints".format(args.config_path)
 checkpoint_path_file = os.path.join(checkpoint_path, args.version)
 config_file = os.path.join(args.config_path, args.version) + '.yaml'
 config = mlconfig.load(config_file)
+config['dataset']['valset'] = False
+config['dataset']['eval_batch_size'] = 100
 
 logger = util.setup_logger(name=args.version, log_file=log_file_path + '_eval@{}-{}steps'.format(args.attack_choice, args.num_steps) + ".log")
 
@@ -119,7 +117,6 @@ def main():
     # Load Search Version Genotype
     model = config.model().to(device)
     logger.info(model)
-    genotype = None
 
     # Setup ENV
     data_loader = config.dataset().getDataLoader()
