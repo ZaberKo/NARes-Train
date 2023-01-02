@@ -1,8 +1,9 @@
 import util
+import sys 
+import numpy as np
 import time
 import torch
 import models
-from ofa.utils import cross_entropy_loss_with_soft_target
 import torch.nn.functional as F
 
 if torch.cuda.is_available():
@@ -20,7 +21,8 @@ except ImportError:
 
 
 class Trainer():
-    def __init__(self, criterion, data_loader, logger, config, use_amp=None, amp_autocast=torch.cuda.amp.autocast, global_step=0, args=None):
+    def __init__(self, criterion, data_loader, logger, config, use_amp=None, amp_autocast=torch.cuda.amp.autocast, 
+    global_step=0, args=None, stop_sign=100):
         self.criterion = criterion
         self.args = args
         self.data_loader = data_loader
@@ -35,13 +37,16 @@ class Trainer():
         self.acc5_meters = util.AverageMeter()
         self.global_step = global_step
         self.warmup_steps = args.warmup_steps
+        # Catch training error
+        self.num_nan = 0
+        self.stop_sign = stop_sign
 
     def _reset_stats(self):
         self.loss_meters = util.AverageMeter()
         self.acc_meters = util.AverageMeter()
         self.acc5_meters = util.AverageMeter()
 
-    def train(self, epoch, model, criterion, optimizer):
+    def train(self, epoch, model, optimizer):
         model.train()
         for i, (images, labels) in enumerate(self.data_loader["train_dataset"]):
             images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True)
@@ -84,6 +89,7 @@ class Trainer():
             self.amp_scaler.scale(loss).backward()
         else:
             loss.backward()
+        # gradient clip
         if self.config.grad_clip != -1:
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), self.config.grad_clip)
         else:
@@ -92,12 +98,6 @@ class Trainer():
                 param_norm = p.grad.data.norm(2)
                 grad_norm += param_norm.item() ** 2
             grad_norm = grad_norm ** (1. / 2)
-        # if self.use_amp == 'native':
-        #     print("   ### Scaler update ###   ")
-        #     # self.amp_scaler.step(optimizer)
-        #     optimizer.step()
-        #     self.amp_scaler.update()
-        # else:
         optimizer.step()
 
         if len(labels.shape) > 1:
@@ -107,6 +107,13 @@ class Trainer():
         self.acc_meters.update(acc.item(), labels.shape[0])
         self.acc5_meters.update(acc5.item(), labels.shape[0])
 
+        # Catch NaN training 
+        if np.isnan(self.loss_meters.avg):
+            self.num_nan += 1
+        if self.num_nan > self.stop_sign:
+            print("   ### Error!!!: Training is NaN and exiting now, please try it later ###  ")
+            print("   ### Error!!!: Training is NaN and exiting now, please try it later ###  ")
+            sys.exit(0)
         payload = {"acc": acc,
                    "acc_avg": self.acc_meters.avg,
                    "loss": loss,

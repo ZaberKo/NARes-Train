@@ -65,8 +65,6 @@ args = parser.parse_args()
 exp_name = "{}/{}".format(args.config_path.replace('configs', 'ablation_dir'), args.run)
 args.exp_name = "{}/{}".format(exp_name, args.version)
 # Pre-set some attributes for nasbench
-# args.apex_amp = True
-args.native_amp = True
 
 if args.epsilon > 1:
     args.epsilon = args.epsilon / 255
@@ -114,7 +112,6 @@ config["seed"] = "{}".format(args.seed)
 config["dataset"]["data_path"] = "{}".format(args.data_path)
 config.save(os.path.join(exp_path, args.version + '.yaml'), default_flow_style=False, sort_keys=False, allow_unicode=False)
 
-# shutil.copyfile(config_file, os.path.join(exp_path, args.version + '.yaml'))
 if args.stop_epoch == None:
     args.stop_epoch = config.epochs
 
@@ -198,8 +195,7 @@ def adjust_learning_rate(optimizer, epoch):
     return lr
 
 
-def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trainer, evaluator, ENV, data_loader,
-          teacher_model=None):
+def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trainer, evaluator, ENV, data_loader):
     print(model)
 
     for epoch in range(starting_epoch, config.epochs):
@@ -207,7 +203,7 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
         adjust_learning_rate(optimizer, epoch)
 
         # Train
-        ENV['global_step'] = trainer.train(epoch, model, criterion, optimizer)
+        ENV['global_step'] = trainer.train(epoch, model, optimizer)
         # Eval
         logger.info("=" * 20 + "Eval Epoch %d" % (epoch) + "=" * 20)
         evaluator.eval(epoch, model)
