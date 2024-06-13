@@ -1,46 +1,61 @@
-<h1>NAS-Bench-R: A Neural Architecture Search Dataset and Benchmark for Adversarial Robustness</h1>
+# NARes Training
 
-This repository contains the code for *NAS-Bench-R*, a framework for benchmarking robust architectures in adversarial robustness and OOD:
+This repository contains the training code for [**NARes**](https://github.com/zhichao-lu/arch-dataset-adv-robustness)
 
 ## Overview
 
-This repo contains the implemantation of *NAS-Bench-R*. 
-Following just presents a brief introduction to this repo.
-- **Models** include the model definitions, currently there is only provide the support for ```PreActRobustNetwork```.
+This repo contains the training implementation of **NARes**.
 
-- **Configs** save the configs used to define a training, for example architecture structure, optimizer, and scheduler,  
-(if you have any confusion just take a look at ```configs/template_config.yaml```).
+- `models/` include the model definitions, currently only `PreActRobustNetwork` is supported.
 
-- **Tools** provide some useful tools to process the files in batch. They are used to get parameters and flops of all subnets 
-(```get_subnets_params_flops.py```, the results will be saved at folder **results**), 
-generate all configs following flops in descending order (```generate_subnet_configs.py```, the generated configs will be saved in folder **Configs**), 
-and generate the training scripts in batch (```generate_training_scripts```, the scripts in folder **train_scripts**) 
+- `configs/nasbenc/` save the configs used to define a model and its training settings, Eg: architecture structure, optimizer, and lr scheduler. (If you have any confusion, just take a look at `configs/template_config.yaml`).
 
-- **Main.py and trainer.py** provide the training pipeline; **eval_robustness.py and evaluator.py** provide the testing pipeline; 
-**trades.py and madrys.py** are two standard adversarial loss functions; **dataset.py** provide the support of CIFAR for adversarial training. 
+- `main.py` provides the training pipeline.
 
 ## Preparation
-1. **Dataset**: Prepare the those two dataset
- [Official CIFAR10](https://www.cs.toronto.edu/~kriz/cifar.html) 
- (Pytorch dataloader will download this automatically, just take it easy) 
- and [CIFAR10.1](https://github.com/modestyachts/CIFAR-10.1), and and put them into ```datasets/cifar10```.
 
-2. Enviroment: This repo supports the NVIDIA Apex to accelerate the training process as well as save the GPU consumption. 
-Therefore, it would be better to install the Apex following [this](https://github.com/NVIDIA/apex), but without it is also fine.
+1. **Dataset**: Prepare two datasets
 
+   - [CIFAR10](https://www.cs.toronto.edu/~kriz/cifar.html): You don't need manually download it, since Pytorch dataloader will automatically download it. 
 
-## Getting started
+   - [CIFAR10.1](https://github.com/modestyachts/CIFAR-10.1): Download and put them into ```datasets/cifar10```.
 
-1. 所有需要跑的实验都已经生成对应的scripts放到了```train_scripts```文件夹中。
-所需要训练的模型太多，根据flops大小把模型分成了三部分small, medium, large。
-按照规定每个模型需要训练三次，每次训练随机种子seed都会不一样。
-每次执行的时候，把small，medium，和large下相同seed的（文件命名会提示）运行。
-该文件夹下的文件中每一行指令都是独立的，代表着每一个模型的训练。
-如``CUDA_VISIBLE_DEVICES=0 nohup python main.py --config_path ./configs/nasbench/small 
---version arch_001 --seed 0 --run r1 > train_logs/nasbench/nasbench-small-r1@arch_001.log & 
-``代表着arch_001的模型训练，seed@0，run@r1.
+   - The file hierarchy will be structured as follows:
+  
+        ```plaintext
+        datasets
+        └── cifar10
+            ├── cifar10.1_v4_data.npy
+            ├── cifar10.1_v4_labels.npy
+            ├── cifar10.1_v6_data.npy
+            ├── cifar10.1_v6_labels.npy
+            ├── cifar-10-batches-py
+            │   ├── batches.meta
+            │   ├── data_batch_1
+            │   ├── data_batch_2
+            │   ├── data_batch_3
+            │   ├── data_batch_4
+            │   ├── data_batch_5
+            │   ├── readme.html
+            │   └── test_batch
+            └── cifar-10-python.tar.gz
+        ```
 
+2. **Environment**: This repo supports NVIDIA [Apex](https://github.com/NVIDIA/apex) to accelerate the training process as well as save the GPU consumption.
+   
+   - We provide a docker image (pytorch=1.8.0, cuda=11.1.1, cudnn=8.0.5) with pre-installed Apex. See [DockerHub]()
 
-## To-Do list
-1. 确保pytorch自带的native amp运行没问题：(1) 实现没问题；(2) 跟没用amp和使用NVIDIA Apex对比精度差别不大。
-2. 总共有超过1.5w条指令。设置排队机制，让每条独立训练的指令自动启动在某个GPU节点空闲的情况下。
+## Training
+
+We provide the training script `run.sh` to sequentially train models from a file list by arch_id:
+
+```shell
+# training models on GPU0 with seed 42, the training logs and 
+# weights will be stored in ablation_dir/nasbench/<type>/r1
+
+./run.sh train_list.txt 0 42 r1
+```
+
+# Acknowledgement
+
+- This repo is modified from [RobustWRN](https://github.com/HanxunH/RobustWRN).

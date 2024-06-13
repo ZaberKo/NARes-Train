@@ -1,4 +1,4 @@
-mlconfig
+torch
+torchvision
+mlconfig<0.2.0
 torchprofile
-
-#-r requirements-torch.txt
