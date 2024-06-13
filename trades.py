@@ -5,7 +5,6 @@ from torch.autograd import Variable
 import torch.optim as optim
 import models
 import util
-from ofa.utils import cross_entropy_loss_with_soft_target
 
 if torch.cuda.is_available():
     device = torch.device('cuda')

@@ -43,14 +43,17 @@ parser.add_argument('--run', type=str, default='r1')
 
 parser.add_argument("--stop_epoch", type=int, default=None)
 parser.add_argument("--warmup_steps", type=int, default=0)
-parser.add_argument('--save_epochs', type=list, default=[74, 89])
+parser.add_argument('--save_epochs', type=int, default=[74, 89], nargs='+')
 parser.add_argument('--train_eval_epoch', default=0.0, type=float, help='PGD Eval in training after this epoch')
 parser.add_argument('--data_parallel', action='store_true', default=False)
+parser.add_argument('--valset', action='store_false', default=True)
 
 parser.add_argument('--load_model', action='store_true', default=False)
 parser.add_argument('--load_best_model', action='store_true', default=False)
 #
-parser.add_argument('--attack_choice', default=['PGD', 'PGD-CW'], choices=['PGD', 'PGD-CW'], type=list)
+parser.add_argument('--attack_choice', default=['PGD', 'PGD-CW'], choices=['PGD', 'PGD-CW'], type=str, nargs='+')
+# adding support for attackers with other steps 
+parser.add_argument('--attack_step', default=[20, 40], type=int, nargs='+')
 parser.add_argument('--epsilon', default=8, type=float, help='perturbation')
 parser.add_argument('--num_steps', default=20, type=int, help='perturb number of steps')
 parser.add_argument('--step_size', default=0.8, type=float, help='perturb step size')
@@ -111,6 +114,9 @@ config = mlconfig.load(config_file)
 config["seed"] = "{}".format(args.seed)
 config["dataset"]["data_path"] = "{}".format(args.data_path)
 config.save(os.path.join(exp_path, args.version + '.yaml'), default_flow_style=False, sort_keys=False, allow_unicode=False)
+# pay attention to this one at 7/01/2023 to validate PGD10 and CW20 on test set instead 
+config["dataset"]["valset"] = args.valset
+print("   ### Evaluating each epoch with attackes@{} with steps@{} ###    ".format(args.attack_choice, args.attack_step))
 
 if args.stop_epoch == None:
     args.stop_epoch = config.epochs
@@ -222,12 +228,12 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
                 for param in model.parameters():
                     param.requires_grad = False
                 natural_acc, pgd_acc, stable_acc, lip = whitebox_eval(data_loader, model, evaluator,
-                                                                      attack_choice='PGD', num_steps=20, log=False)
+                                                                      attack_choice='PGD', num_steps=args.attack_step[0], log=False)
                 for param in model.parameters():
                     param.requires_grad = True
                 ENV['best_pgd_acc'] = max(ENV['best_pgd_acc'], pgd_acc)
                 ENV['pgd_eval_history'].append((epoch, pgd_acc))
-                logger.info('Best PGD-20 accuracy: %.2f' % (ENV['best_pgd_acc']))
+                logger.info('Best PGD-%d accuracy: %.2f' % (args.attack_step[0], ENV['best_pgd_acc']))
             if "PGD-CW" in args.attack_choice:
                 # CW-40
                 trainer._reset_stats()
@@ -235,7 +241,7 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
                 for param in model.parameters():
                     param.requires_grad = False
                 natural_acc, pgdcw_acc, stable_acc, lip = whitebox_eval(data_loader, model, evaluator,
-                                                                      attack_choice='PGD-CW', num_steps=40, log=False)
+                                                                      attack_choice='PGD-CW', num_steps=args.attack_step[1], log=False)
                 for param in model.parameters():
                     param.requires_grad = True
                 is_best = True if pgdcw_acc > ENV['best_pgdcw_acc'] else False
@@ -243,7 +249,7 @@ def train(starting_epoch, model, genotype, optimizer, scheduler, criterion, trai
                 ENV['pgdcw_eval_history'].append((epoch, pgdcw_acc))
                 ENV['stable_acc_history'].append(stable_acc)
                 ENV['lip_history'].append(lip)
-                logger.info('Best PGDCW-40 accuracy: %.2f' % (ENV['best_pgdcw_acc']))
+                logger.info('Best PGDCW-%d accuracy: %.2f' % (args.attack_step[1], ENV['best_pgdcw_acc']))
         # Reset Stats
         trainer._reset_stats()
         evaluator._reset_stats()
