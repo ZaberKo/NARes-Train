@@ -16,7 +16,7 @@ This repo contains the training implementation of **NARes**.
 
 1. **Dataset**: Prepare two datasets
 
-   - [CIFAR10](https://www.cs.toronto.edu/~kriz/cifar.html): You don't need manually download it, since Pytorch dataloader will automatically download it. 
+   - [CIFAR10](https://www.cs.toronto.edu/~kriz/cifar.html): You don't need to manually download it, since Pytorch dataloader will automatically download it. 
 
    - [CIFAR10.1](https://github.com/modestyachts/CIFAR-10.1): Download and put them into ```datasets/cifar10```.
 
@@ -43,7 +43,18 @@ This repo contains the training implementation of **NARes**.
 
 2. **Environment**: This repo supports NVIDIA [Apex](https://github.com/NVIDIA/apex) to accelerate the training process as well as save the GPU consumption.
    
-   - We provide a docker image (pytorch=1.8.0, cuda=11.1.1, cudnn=8.0.5) with pre-installed Apex. See [DockerHub](https://hub.docker.com/r/zaberchann/robust-nasbench)
+   - We provide a docker image with pre-installed packages including Apex (pytorch=1.8.0, cuda=11.1.1, cudnn=8.0.5). See [DockerHub](https://hub.docker.com/r/zaberchann/robust-nasbench)
+
+3. **Model Configs**: Download `nasbench-config.txz` and uncompress config files to `configs`:
+   
+   ```
+   configs
+   ├── nasbench
+   │   ├── large
+   │   │   ├── arch_13072.yaml
+   │   │   ├── arch_13073.yaml
+   │   │   ├── arch_13074.yaml
+   ```
 
 ## Training
 
