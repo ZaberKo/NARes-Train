@@ -8,7 +8,7 @@ This repo contains the training implementation of **NARes**.
 
 - `models/` include the model definitions, currently only `PreActRobustNetwork` is supported.
 
-- `configs/nasbenc/` save the configs used to define a model and its training settings, Eg: architecture structure, optimizer, and lr scheduler. (If you have any confusion, just take a look at `configs/template_config.yaml`).
+- `configs/nasbench/` save the configs used to define a model and its training settings, Eg: architecture structure, optimizer, and lr scheduler. (If you have any confusion, just take a look at `configs/template_config.yaml`).
 
 - `main.py` provides the training pipeline.
 
@@ -43,7 +43,7 @@ This repo contains the training implementation of **NARes**.
 
 2. **Environment**: This repo supports NVIDIA [Apex](https://github.com/NVIDIA/apex) to accelerate the training process as well as save the GPU consumption.
    
-   - We provide a docker image (pytorch=1.8.0, cuda=11.1.1, cudnn=8.0.5) with pre-installed Apex. See [DockerHub]()
+   - We provide a docker image (pytorch=1.8.0, cuda=11.1.1, cudnn=8.0.5) with pre-installed Apex. See [DockerHub](https://hub.docker.com/r/zaberchann/robust-nasbench)
 
 ## Training
 
